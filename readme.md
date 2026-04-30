@@ -2,43 +2,50 @@
 
 ## Project Description
 
-This repository contains a Jupyter notebook, [project.ipynb](./project.ipynb), that trains and applies a convolutional neural network (CNN) for binary classification of brain MRI images. The notebook performs two main tasks:
+This repository contains a Jupyter notebook, `detector.ipynb`, that trains and evaluates a convolutional neural network (CNN) for binary classification of brain MRI images and then applies that model to new scans in `patient/`.
 
-1. It trains a TensorFlow/Keras model on MRI images stored in class-separated folders under `dataset/`.
-2. It loads the trained model and automatically classifies new images placed in `patient/`, moving them into `results/benign/` or `results/malignant/`.
+The notebook performs these main tasks:
 
-The notebook is best understood as a compact end-to-end prototype for image-based classification and automated file routing. It is suitable for learning, experimentation, and small-scale demonstrations. It is not a production-ready or clinically validated medical system.
+1. Train a CNN on MRI images stored under `dataset/`.
+2. Evaluate the model using validation metrics and plots.
+3. Load the saved model and classify incoming images from `patient/`.
+4. Automatically move classified images into `results/benign/` or `results/malignant/`.
+
+This project is intended as a compact prototype for image-based classification and file routing. It is suitable for learning and experimentation only, not for clinical use.
 
 ## Repository Contents
 
 ```text
-BME/
+Biomedical/
 |-- dataset/
-|   |-- no/              # 1,500 JPG images
-|   `-- yes/             # 1,500 JPG images
-|-- patient/             # Incoming images for inference
+|   |-- no/              # negative class images
+|   `-- yes/             # positive class images
+|-- patient/             # incoming images for inference
 |-- results/
-|   |-- benign/          # Files predicted as negative
-|   `-- malignant/       # Files predicted as positive
-|-- test/                # Present in the repository but not used by the notebook
+|   |-- benign/          # files predicted as negative
+|   `-- malignant/       # files predicted as positive
+|-- detector.ipynb       # Main notebook
 |-- model.h5             # Saved trained model produced by the notebook
-|-- project.ipynb        # Main notebook
 `-- readme.md            # Project documentation
 ```
 
 ## Notebook Scope
 
-The notebook contains five code cells and no markdown cells. The execution flow is linear:
+`detector.ipynb` includes the following workflow:
 
-1. Import libraries and create output directories.
-2. Load the dataset, define the CNN, train the model, and save `model.h5`.
-3. Load `model.h5`, classify images from `patient/`, and move them into the appropriate `results/` subfolder.
-4. Display one example image from `results/malignant/`.
-5. Display one example image from `results/benign/`.
+1. Import libraries and create required output folders.
+2. Load training and validation data from `dataset/`.
+3. Define and train the CNN, then save `model.h5`.
+4. Plot training and validation accuracy/loss.
+5. Generate a confusion matrix.
+6. Compute precision and recall.
+7. Plot the ROC curve.
+8. Process new images from `patient/` and sort them into `results/`.
+9. Display one example from each results folder.
 
 ## Prerequisites
 
-Before running the notebook, ensure that the following software is available:
+Before running the notebook, make sure the following software is installed:
 
 - Python 3.9 or later
 - Jupyter Notebook or JupyterLab
@@ -46,8 +53,9 @@ Before running the notebook, ensure that the following software is available:
 - NumPy
 - Matplotlib
 - Pillow
+- scikit-learn
 
-The notebook was previously executed in an environment that reported TensorFlow `2.20.0`.
+The notebook was previously executed in an environment with TensorFlow `2.20.0`.
 
 ## Installation
 
@@ -70,10 +78,10 @@ source .venv/bin/activate
 ### 2. Install dependencies
 
 ```bash
-pip install tensorflow numpy matplotlib pillow notebook
+pip install tensorflow numpy matplotlib pillow notebook scikit-learn
 ```
 
-If you prefer JupyterLab, you may install it as well:
+If you prefer JupyterLab, you may also install it:
 
 ```bash
 pip install jupyterlab
@@ -81,9 +89,9 @@ pip install jupyterlab
 
 ## Dataset
 
-### Local Dataset Used by the Notebook
+### Local dataset structure
 
-The notebook expects a directory named `dataset/` with exactly two class folders:
+The notebook expects a directory named `dataset/` containing exactly two subfolders:
 
 ```text
 dataset/
@@ -91,65 +99,37 @@ dataset/
 `-- yes/
 ```
 
-At the time of review, the repository contains:
+During training, all images are resized to `150 x 150` pixels and normalized to the range `[0, 1]`.
 
-- `dataset/no`: 1,500 `.jpg` files
-- `dataset/yes`: 1,500 `.jpg` files
+### Label mapping
 
-All discovered training files are JPEG images. During training, the notebook reads them from disk, rescales them to `150 x 150` pixels, and normalizes pixel values to the range `[0, 1]`.
-
-### Dataset Source
-
-The repository does not document the original source or citation for the dataset. For that reason, the provenance of the included images cannot be verified from repository contents alone.
-
-If this project is to be reused for academic, research, or regulated work, the dataset source should be documented explicitly before publication or redistribution. At minimum, the following should be recorded:
-
-- Original dataset name
-- Source URL or DOI
-- Licensing terms
-- Class definitions for `yes` and `no`
-- Any preprocessing or balancing steps performed before the data was added to this repository
-
-### Dataset Structure and Label Semantics
-
-The model is trained with `flow_from_directory('dataset/', class_mode='binary')`. In Keras, binary class indices are assigned alphabetically by folder name, so the effective mapping is expected to be:
+Keras assigns binary labels alphabetically, so the effective mapping is:
 
 - `no -> 0`
 - `yes -> 1`
 
-The notebook later interprets predictions greater than `0.5` as `Malignant` and predictions less than or equal to `0.5` as `Benign`. This means the implementation assumes:
+The notebook interprets model outputs as:
 
-- `yes` corresponds to the positive class routed to `results/malignant/`
-- `no` corresponds to the negative class routed to `results/benign/`
+- `prediction > 0.5`: `Malignant`
+- `prediction <= 0.5`: `Benign`
 
-That assumption should be reviewed carefully. A folder named `no` may represent "no tumor" rather than "benign tumor," which is not medically equivalent.
+This means the implementation assumes:
 
-## Methodology and Algorithms
+- `yes` corresponds to the positive/malignant class
+- `no` corresponds to the negative/benign class
 
-### Data Preparation
+Review these class semantics carefully before using the results.
+
+## Notebook Details
+
+### Model training and evaluation
 
 The notebook uses `ImageDataGenerator` with:
 
 - `rescale=1./255`
 - `validation_split=0.2`
 
-Only the training subset is actually instantiated:
-
-```python
-train_data = datagen.flow_from_directory(
-    'dataset/',
-    target_size=(150, 150),
-    batch_size=32,
-    class_mode='binary',
-    subset='training'
-)
-```
-
-As written, the notebook trains on the 80 percent training portion of the dataset and does not create or use a validation generator, even though `validation_split` is configured.
-
-### Model Architecture
-
-The CNN is defined with Keras `Sequential` and contains the following layers:
+It constructs a CNN with the following layers:
 
 1. `Conv2D(32, (3, 3), activation='relu', input_shape=(150, 150, 3))`
 2. `MaxPooling2D(2, 2)`
@@ -160,103 +140,50 @@ The CNN is defined with Keras `Sequential` and contains the following layers:
 7. `Dropout(0.5)`
 8. `Dense(1, activation='sigmoid')`
 
-This is a straightforward CNN for binary image classification:
-
-- Convolution layers learn local visual features.
-- Pooling layers reduce spatial resolution and computation.
-- The dense layer combines extracted features into a final decision representation.
-- The dropout layer reduces overfitting pressure during training.
-- The sigmoid output produces a scalar probability-like score for the positive class.
-
-### Optimization
-
 The model is compiled with:
 
 - Optimizer: `adam`
 - Loss: `binary_crossentropy`
 - Metric: `accuracy`
 
-Training is performed for `10` epochs:
+Training runs for `10` epochs and saves the model as `model.h5`.
 
-```python
-model.fit(train_data, epochs=10)
-```
+### Evaluation outputs
 
-The trained model is then saved as:
+The notebook includes:
 
-```python
-model.save('model.h5')
-```
+- Training and validation accuracy and loss plots
+- A confusion matrix for validation data
+- Precision and recall scores
+- ROC curve and AUC estimation
 
-## Detailed Notebook Walkthrough
+### Inference and file routing
 
-### Cell 0: Environment Setup
+The notebook loads `model.h5`, scans `patient/` for `.png`, `.jpg`, and `.jpeg` files, and moves each image to:
 
-Purpose:
+- `results/malignant/` if the prediction is positive
+- `results/benign/` if the prediction is negative
 
-- Imports standard library modules: `os`, `shutil`
-- Imports scientific and visualization libraries: `numpy`, `matplotlib`
-- Imports TensorFlow/Keras utilities for modeling and image loading
-- Creates `results/benign` and `results/malignant` if they do not already exist
-- Prints the TensorFlow version
+The displayed samples from `results/malignant/` and `results/benign/` are intended for quick visual checks only.
 
-Practical effect:
+## How to run the notebook
 
-- Ensures the notebook can safely write classification outputs without failing because of missing directories
-- Confirms the TensorFlow runtime is available
+1. Confirm `dataset/no` and `dataset/yes` exist and contain training images.
+2. Ensure dependencies are installed.
+3. Start Jupyter Notebook or JupyterLab from the repository root.
+4. Open `detector.ipynb`.
+5. Run the cells in order from top to bottom.
+6. Place one or more new images in `patient/`.
+7. Run the inference cell to process the new scans.
+8. Inspect the sample image displays in the final cells.
 
-Expected output:
+## Notes and limitations
 
-```text
-Libraries loaded. TensorFlow version: <version>
-```
-
-### Cell 1: Data Loading, Model Definition, Training, and Model Export
-
-Purpose:
-
-- Builds the image data pipeline from `dataset/`
-- Resizes all images to `150 x 150`
-- Normalizes pixel values
-- Creates the CNN architecture
-- Trains the model for 10 epochs
-- Saves the trained model to `model.h5`
-
-Key implementation details:
-
-- `batch_size=32`
-- Binary classification mode
-- Only the training subset is loaded
-- No explicit validation or test evaluation is performed
-
-Expected console behavior:
-
-- Keras reports the number of discovered training images
-- Epoch-by-epoch loss and accuracy are printed
-- A save confirmation message is displayed
-
-Stored notebook output indicates a prior successful run on `2,400` training images. Accuracy rose substantially across epochs, but because the notebook does not evaluate on a held-out validation or test set, those values should be interpreted as training performance only.
-
-### Cell 2: Patient Folder Inference and Automated File Sorting
-
-Purpose:
-
-- Loads the saved model from `model.h5`
-- Scans the `patient/` directory for files ending in `.png`, `.jpg`, or `.jpeg`
-- Preprocesses each image to the expected input size and scale
-- Runs inference on one image at a time
-- Moves each processed image into either `results/benign/` or `results/malignant/`
-
-How the classification decision is made:
-
-```python
-if prediction[0] > 0.5:
-    label = "Malignant"
-else:
-    label = "Benign"
-```
-
-Operational behavior:
+- This repository is a prototype and not clinically validated.
+- The notebook uses a simple CNN and does not include advanced augmentation.
+- The model is evaluated only on a validation split from the training data.
+- Files are moved from `patient/` into `results/`; the originals are not retained.
+- The class semantics depend on the naming of `dataset/no` and `dataset/yes`.
 
 - If `patient/` is empty, the cell prints a message and exits
 - If files are present, each file is moved out of `patient/` after classification
